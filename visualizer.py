@@ -13,20 +13,28 @@ def parse_network(cidr):
 def ip_to_int(ip):
     return int(ip)
 
-def draw_network_diagram(main_cidr, subnets_cidrs, output_file="subnet_map.png"):
+def draw_network_diagram(main_cidr, subnet_groups, output_file="subnet_map.png"):
     main_net = parse_network(main_cidr)
     if not main_net:
         return
 
-    subnets = []
-    for s in subnets_cidrs:
-        net = parse_network(s)
-        if net:
-            # Check if subnet is actually within main network
-            if not net.subnet_of(main_net):
-                print(f"Warning: {s} is not a subnet of {main_cidr}. Skipping.")
-                continue
-            subnets.append(net)
+    # Parse all subnets and store with metadata
+    parsed_subnets = []
+    for group_idx, group in enumerate(subnet_groups):
+        title = group.get('title', f"Group {group_idx+1}")
+        cidrs = group.get('subnets', [])
+        
+        for cidr in cidrs:
+            net = parse_network(cidr)
+            if net:
+                if not net.subnet_of(main_net):
+                    print(f"Warning: {cidr} is not a subnet of {main_cidr}. Skipping.")
+                    continue
+                parsed_subnets.append({
+                    'net': net,
+                    'title': title,
+                    'group_idx': group_idx
+                })
 
     # Setup plot
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -42,17 +50,14 @@ def draw_network_diagram(main_cidr, subnets_cidrs, output_file="subnet_map.png")
     # Hide Y axis
     ax.get_yaxis().set_visible(False)
     
-    # Format X axis to show IP addresses instead of huge integers
-    # We'll pick a few points to label
+    # Format X axis
     ticks = [start_ip_int, end_ip_int]
     tick_labels = [str(main_net.network_address), str(main_net.broadcast_address)]
     
-    # Add some intermediate ticks if needed, but for now start/end is good for the main bar
     ax.set_xticks(ticks)
     ax.set_xticklabels(tick_labels, rotation=45, ha='right')
 
     # Draw Main Network (Base Line/Bar)
-    # Let's draw it as a big rectangle at the bottom
     main_rect = patches.Rectangle(
         (start_ip_int, 1), 
         total_hosts, 
@@ -76,21 +81,22 @@ def draw_network_diagram(main_cidr, subnets_cidrs, output_file="subnet_map.png")
     )
 
     # Draw Subnets
-    # We'll draw them on a "layer" above the main network
-    # To avoid overlapping text, we might need to stagger heights or just rely on visual separation
-    
-    # Sort subnets by address to draw them in order
-    subnets.sort(key=lambda x: x.network_address)
+    # Sort subnets by address
+    parsed_subnets.sort(key=lambda x: x['net'].network_address)
     
     colors = ['#ff9999', '#66b3ff', '#99ff99', '#ffcc99', '#c2c2f0', '#ffb3e6']
     
-    for i, subnet in enumerate(subnets):
+    for i, item in enumerate(parsed_subnets):
+        subnet = item['net']
+        title = item['title']
+        group_idx = item['group_idx']
+        
         s_start = ip_to_int(subnet.network_address)
         s_end = ip_to_int(subnet.broadcast_address)
         s_width = s_end - s_start
         
-        # Cycle colors
-        color = colors[i % len(colors)]
+        # Color based on group
+        color = colors[group_idx % len(colors)]
         
         # Draw rectangle
         rect = patches.Rectangle(
@@ -104,17 +110,15 @@ def draw_network_diagram(main_cidr, subnets_cidrs, output_file="subnet_map.png")
         ax.add_patch(rect)
         
         # Label
-        # If the subnet is too small, the text might be messy. 
-        # We'll try to put text in the center of the block.
-        label_text = str(subnet)
+        label_text = f"{title}\n{subnet}"
         ax.text(
             s_start + s_width/2, 
             3, 
             label_text, 
             ha='center', 
             va='center', 
-            fontsize=9, 
-            rotation=90 if s_width < total_hosts * 0.05 else 0 # Rotate if very narrow
+            fontsize=8, 
+            rotation=90 if s_width < total_hosts * 0.08 else 0
         )
 
     plt.title(f"Subnet Visualization for {main_cidr}")
@@ -126,19 +130,30 @@ def draw_network_diagram(main_cidr, subnets_cidrs, output_file="subnet_map.png")
 
 if __name__ == "__main__":
     # Example Usage
-    # You can modify these lists to test different configurations
     main = "192.168.0.0/16"
     
-
-    subs = [
-        "192.168.0.0/19",
-        # "192.168.32.0/19",
-        "192.168.64.0/19", 
-        "192.168.96.0/19",
-        "192.168.160.0/17",
-        "192.168.172.0/17",
-        "192.168.184.0/17",
-        "192.168.200.0/25"
+    subnet_groups = [
+        {
+            "title": "Office A",
+            "subnets": [
+                "192.168.0.0/19",
+                "192.168.64.0/19"
+            ]
+        },
+        {
+            "title": "Data Center",
+            "subnets": [
+                "192.168.96.0/19",
+                "192.168.160.0/17"
+            ]
+        },
+        {
+            "title": "Guest WiFi",
+            "subnets": [
+                "192.168.172.0/17", # Note: This overlaps with 160.0/17 if not careful, but assuming valid non-overlapping for now or just visualizing inputs
+                "192.168.200.0/25"
+            ]
+        }
     ]
     
-    draw_network_diagram(main, subs)
+    draw_network_diagram(main, subnet_groups)
