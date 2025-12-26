@@ -2,6 +2,7 @@ import ipaddress
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import sys
+from data import main_subnet, subnet_groups, map_title
 
 def parse_network(cidr):
     try:
@@ -13,147 +14,347 @@ def parse_network(cidr):
 def ip_to_int(ip):
     return int(ip)
 
-def draw_network_diagram(main_cidr, subnet_groups, output_file="subnet_map.png"):
+def get_third_octet(ip_int):
+    # ip_int is a 32-bit integer.
+    # 3rd octet corresponds to bits 8-15 (0-indexed from right, so actually 8-15 shifted right).
+    # IPv4: A.B.C.D -> (A<<24) + (B<<16) + (C<<8) + D
+    # We want C.
+    return (ip_int >> 8) & 0xFF
+
+def draw_network_diagram(main_cidr, subnet_groups, title=None, width_px=1400):
     main_net = parse_network(main_cidr)
     if not main_net:
         return
+    
+    # Convert pixels to inches (matplotlib uses inches, 100 DPI default)
+    # Hardcode A4 Landscape dimensions
+    # A4 is 297mm x 210mm
+    # 297mm / 25.4 = 11.69 inches
+    # 210mm / 25.4 = 8.27 inches
+    width_inches = 11.69
+    height_inches = 8.27
 
     # Parse all subnets and store with metadata
     parsed_subnets = []
-    for group_idx, group in enumerate(subnet_groups):
-        title = group.get('title', f"Group {group_idx+1}")
-        cidrs = group.get('subnets', [])
-        
-        for cidr in cidrs:
-            net = parse_network(cidr)
-            if net:
-                if not net.subnet_of(main_net):
-                    print(f"Warning: {cidr} is not a subnet of {main_cidr}. Skipping.")
-                    continue
-                parsed_subnets.append({
-                    'net': net,
-                    'title': title,
-                    'group_idx': group_idx
-                })
+    group_text_summaries = [] # Store text summary for each group
 
+    for group_idx, group in enumerate(subnet_groups):
+        # Determine display title: use title if present, else comment
+        raw_title = group.get('title', '').strip()
+        if raw_title:
+            display_title = raw_title
+        else:
+            display_title = group.get('comment', f"Group {group_idx+1}")
+            
+        group_title = raw_title # If empty, keep it empty for diagram labels
+        group_comment = group.get('comment')
+        cidrs_data = group.get('subnets', [])
+        show_full = group.get('show_full', True)
+        
+        group_subnets = []
+        
+        # detailed tracking for text summary
+        group_min_octet = 256
+        group_max_octet = -1
+        group_prefix_str = ""
+
+        # First pass to find common prefix and octet range
+        temp_cidrs = []
+        for item in cidrs_data:
+             if isinstance(item, str): cidr = item
+             elif isinstance(item, dict): cidr = item.get('cidr')
+             else: continue
+             temp_cidrs.append(cidr)
+        
+        for cidr_str in temp_cidrs:
+             try:
+                ip_part, prefix_part = cidr_str.split('/')
+                # Find the prefix (first 2 octets)
+                # Assumes all subnets in a group share at least the first 2 octets as per example implication
+                if not group_prefix_str:
+                    parts = ip_part.split('.')
+                    if len(parts) >= 2:
+                        group_prefix_str = f"{parts[0]}.{parts[1]}"
+                
+                # Get range of 3rd octets
+                net = ipaddress.ip_network(cidr_str, strict=False)
+                start_3rd = int(net.network_address.packed[2])
+                end_3rd = int(net.broadcast_address.packed[2])
+                
+                if start_3rd < group_min_octet: group_min_octet = start_3rd
+                if end_3rd > group_max_octet: group_max_octet = end_3rd
+
+             except Exception:
+                 pass
+
+        if group_prefix_str and group_min_octet <= group_max_octet:
+             if group_min_octet == group_max_octet:
+                 # Static range, e.g. 192.168.76.0
+                 range_str = f"{group_prefix_str}.{group_min_octet}.0"
+             else:
+                 # Range e.g. 192.168.0 - 20
+                 range_str = f"{group_prefix_str}.{group_min_octet} - {group_max_octet}"
+                 
+             summary_text = f"{display_title} : {range_str}"
+             group_text_summaries.append(summary_text)
+
+        # Second pass to build render data
+        for item in cidrs_data:
+            # Handle both string and dict inputs
+            if isinstance(item, str):
+                cidr_str = item
+            elif isinstance(item, dict):
+                cidr_str = item.get('cidr')
+            else:
+                continue
+
+            # Manual parsing to respect user input (non-aligned)
+            try:
+                ip_part, prefix_part = cidr_str.split('/')
+                prefix_len = int(prefix_part)
+                start_ip_int = int(ipaddress.IPv4Address(ip_part))
+                num_hosts = 2**(32 - prefix_len)
+                end_ip_int = start_ip_int + num_hosts - 1
+                
+                # Create a network object for display/validation (strict=False will align it, but we use custom coords)
+                net = ipaddress.ip_network(cidr_str, strict=False)
+                
+                # Check if it fits in main network
+                main_start = int(main_net.network_address)
+                main_end = int(main_net.broadcast_address)
+                
+                # Warn if outside but don't skip (respect user input)
+                if start_ip_int < main_start or end_ip_int > main_end:
+                     print(f"Warning: {cidr_str} extends outside main network boundaries.")
+                     # continue # Don't skip, draw it anyway
+
+                group_subnets.append({
+                    'net': net, # Keep for label
+                    'cidr_str': cidr_str, # Keep original string
+                    'start_int': start_ip_int,
+                    'end_int': end_ip_int,
+                    'title': group_title,
+                    'group_idx': group_idx,
+                    'comment': group_comment
+                })
+            except Exception as e:
+                print(f"Error parsing {cidr_str}: {e}")
+                continue
+        
+        # If show_full is False, consolidate all subnets into one block
+        if not show_full and group_subnets:
+            min_start = min(s['start_int'] for s in group_subnets)
+            max_end = max(s['end_int'] for s in group_subnets)
+            
+            parsed_subnets.append({
+                'net': None,
+                'cidr_str': None,  # No IP range label when show_full is False
+                'start_int': min_start,
+                'end_int': max_end,
+                'title': group_title,
+                'group_idx': group_idx,
+                'comment': group_comment,
+                'show_full': False
+            })
+        else:
+            # Show all individual subnets
+            for subnet in group_subnets:
+                subnet['show_full'] = True
+            parsed_subnets.extend(group_subnets)
+
+    # Generate Colored Version
+    render_plot(main_net, parsed_subnets, group_text_summaries, "subnet_map.png", title=title, style="colored", width_inches=width_inches, height_inches=height_inches)
+    
+    # Generate B&W Version
+    render_plot(main_net, parsed_subnets, group_text_summaries, "subnet_map_bw.png", title=title, style="bw", width_inches=width_inches, height_inches=height_inches)
+
+def render_plot(main_net, subnets_data, text_summaries, output_file, title=None, style="colored", width_inches=11.69, height_inches=8.27):
     # Setup plot
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plt.subplots(figsize=(width_inches, height_inches))
+    
+    # 0.5 cm margin settings
+    # 0.5 cm in inches is approx 0.197
+    margin_in = 0.2 
+    
+    # Calculate relative margins
+    left = margin_in / width_inches
+    right = 1 - (margin_in / width_inches)
+    bottom = margin_in / height_inches
+    top = 1 - (margin_in / height_inches)
+    
+    # Adjust strictly
+    plt.subplots_adjust(left=left, right=right, top=top, bottom=bottom)
     
     # Define X axis limits based on main network
     start_ip_int = ip_to_int(main_net.network_address)
     end_ip_int = ip_to_int(main_net.broadcast_address)
     total_hosts = end_ip_int - start_ip_int
     
-    ax.set_xlim(start_ip_int, end_ip_int)
-    ax.set_ylim(0, 5) # Arbitrary Y height
+    # Add padding to center the visualization
+    padding = total_hosts * 0.02
+    ax.set_xlim(start_ip_int - padding, end_ip_int + padding)
+    ax.set_ylim(-3, 4) # Expanded Y range to fit text below
     
     # Hide Y axis
     ax.get_yaxis().set_visible(False)
     
-    # Format X axis
-    ticks = [start_ip_int, end_ip_int]
-    tick_labels = [str(main_net.network_address), str(main_net.broadcast_address)]
+    # Hide spines (borders)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    # Show bottom spine for the axis (moved manually?? No, standard axis is fine if we place ticks right)
     
-    ax.set_xticks(ticks)
-    ax.set_xticklabels(tick_labels, rotation=45, ha='right')
+    # Move the bottom spine up a bit if needed, or just let it be at y=0 (default data coords imply 0?)
+    # Just make simple line at y=0
+    # Actually, let's keep the standard bottom spine but we might need to adjust tick positions.
+    ax.spines['bottom'].set_visible(True)
+    ax.spines['bottom'].set_position(('data', 0))
+    
+    # Calculate ticks based on subnet boundaries
+    boundary_ips = set()
+    # Always include main network start/end
+    boundary_ips.add(start_ip_int)
+    boundary_ips.add(end_ip_int)
+    
+    for item in subnets_data:
+        # Use custom coordinates
+        s_start = item['start_int']
+        s_end = item['end_int']
+        boundary_ips.add(s_start)
+        boundary_ips.add(s_end + 1) # Next IP
+        
+    sorted_ticks = sorted(list(boundary_ips))
+    
+    # Filter ticks to be within the view
+    visible_ticks = [t for t in sorted_ticks if start_ip_int <= t <= end_ip_int]
+    
+    tick_labels = [str(ipaddress.ip_address(t)) for t in visible_ticks]
+    
+    ax.set_xticks(visible_ticks)
+    ax.set_xticklabels(tick_labels, rotation=90, ha='center', fontsize=8)
 
     # Draw Main Network (Base Line/Bar)
     main_rect = patches.Rectangle(
-        (start_ip_int, 1), 
+        (start_ip_int, 0.5), 
         total_hosts, 
-        1, 
-        linewidth=1, 
-        edgecolor='black', 
+        0.5, 
+        linewidth=0, 
+        edgecolor='none', 
         facecolor='none',
         label=str(main_net)
     )
     ax.add_patch(main_rect)
-    
-    # Label the main network
-    ax.text(
-        start_ip_int + total_hosts/2, 
-        1.5, 
-        f"Main Network: {main_net}", 
-        ha='center', 
-        va='center', 
-        fontsize=12, 
-        fontweight='bold'
-    )
 
     # Draw Subnets
-    # Sort subnets by address
-    parsed_subnets.sort(key=lambda x: x['net'].network_address)
+    subnets_data.sort(key=lambda x: x['start_int'])
     
     colors = ['#ff9999', '#66b3ff', '#99ff99', '#ffcc99', '#c2c2f0', '#ffb3e6']
     
-    for i, item in enumerate(parsed_subnets):
-        subnet = item['net']
-        title = item['title']
+    for i, item in enumerate(subnets_data):
+        # Use custom coordinates
+        s_start = item['start_int']
+        s_end = item['end_int']
+        s_width = s_end - s_start + 1
+        
+        subnet_title = item['title']
         group_idx = item['group_idx']
+        comment = item['comment']
+        cidr_label = item['cidr_str']
         
-        s_start = ip_to_int(subnet.network_address)
-        s_end = ip_to_int(subnet.broadcast_address)
-        s_width = s_end - s_start
-        
-        # Color based on group
-        color = colors[group_idx % len(colors)]
+        # Determine color based on style
+        if style == "colored":
+            color = colors[group_idx % len(colors)]
+            edge_color = 'none'
+        else:
+            color = 'white' # B&W style
+            edge_color = 'black'
         
         # Draw rectangle
         rect = patches.Rectangle(
-            (s_start, 2.5), 
+            (s_start, 0.2), # Slightly above axis
             s_width, 
-            1, 
+            0.8, 
             linewidth=1, 
-            edgecolor='black', 
+            edgecolor=edge_color, 
             facecolor=color
         )
         ax.add_patch(rect)
         
-        # Label
-        label_text = f"{title}\n{subnet}"
+        # Label (Title + CIDR) inside the block
+        # Only show CIDR if show_full is True or cidr_label exists
+        if cidr_label:
+            label_text = f"{subnet_title}\n{cidr_label}"
+        else:
+            label_text = subnet_title
+        
         ax.text(
             s_start + s_width/2, 
-            3, 
+            0.6, # Centered in rect
             label_text, 
             ha='center', 
             va='center', 
             fontsize=8, 
             rotation=90 if s_width < total_hosts * 0.08 else 0
         )
+        
+        # Comment above the block
+        if comment:
+            ax.text(
+                s_start + s_width/2, 
+                1.1, 
+                comment, 
+                ha='center', 
+                va='bottom', 
+                fontsize=8, 
+                fontstyle='italic',
+                rotation=90 if s_width < total_hosts * 0.08 else 0
+            )
 
-    plt.title(f"Subnet Visualization for {main_cidr}")
-    plt.tight_layout()
+    # Title - Manually placed close to diagram
+    final_title = title if title else str(main_net)
+    # Place title at y=3, diagram max is around 1.5-2 with comments
+    ax.text(
+        (start_ip_int + end_ip_int) / 2,
+        3.5,
+        final_title,
+        ha='center',
+        va='bottom',
+        fontsize=24,
+        fontweight='bold'
+    )
+
+    # Text Breakdown - Below Diagram
+    # Render in columns of 5, starting from left.
     
+    text_y_start = -1.5
+    line_height = 0.3
+    rows_per_col = 5
+    
+    # Calculate column width (approx 25% of total width for now to fit ~4 columns)
+    # Adjust based on expected length of text?
+    col_width = total_hosts * 0.25
+    
+    for i, line in enumerate(text_summaries):
+        col = i // rows_per_col
+        row = i % rows_per_col
+        
+        x_pos = start_ip_int + (col * col_width)
+        y_pos = text_y_start - (row * line_height)
+        
+        ax.text(
+            x_pos,
+            y_pos,
+            line,
+            ha='left',
+            va='top',
+            fontsize=10,
+            family='monospace'
+        )
+
+    # Save
     print(f"Saving visualization to {output_file}...")
-    plt.savefig(output_file)
+    plt.savefig(output_file, dpi=300)
+    plt.close(fig)
     print("Done.")
 
-if __name__ == "__main__":
-    # Example Usage
-    main = "192.168.0.0/16"
-    
-    subnet_groups = [
-        {
-            "title": "Office A",
-            "subnets": [
-                "192.168.0.0/19",
-                "192.168.64.0/19"
-            ]
-        },
-        {
-            "title": "Data Center",
-            "subnets": [
-                "192.168.96.0/19",
-                "192.168.160.0/17"
-            ]
-        },
-        {
-            "title": "Guest WiFi",
-            "subnets": [
-                "192.168.172.0/17", # Note: This overlaps with 160.0/17 if not careful, but assuming valid non-overlapping for now or just visualizing inputs
-                "192.168.200.0/25"
-            ]
-        }
-    ]
-    
-    draw_network_diagram(main, subnet_groups)
+if __name__ == "__main__":   
+    draw_network_diagram(main_subnet, subnet_groups, title=map_title)
