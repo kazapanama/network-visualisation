@@ -2,7 +2,10 @@ import ipaddress
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import sys
-from data import main_subnet, subnet_groups, map_title
+import argparse
+import importlib.util
+import os
+
 
 def parse_network(cidr):
     try:
@@ -356,5 +359,59 @@ def render_plot(main_net, subnets_data, text_summaries, output_file, title=None,
     plt.close(fig)
     print("Done.")
 
-if __name__ == "__main__":   
-    draw_network_diagram(main_subnet, subnet_groups, title=map_title)
+def load_data_module(file_path):
+    try:
+        module_name = os.path.splitext(os.path.basename(file_path))[0]
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+        else:
+            print(f"Error: Could not load module from {file_path}")
+            return None
+    except Exception as e:
+        print(f"Error loading module {file_path}: {e}")
+        return None
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate subnet visualization.")
+    parser.add_argument("-in", "--input", help="Path to the python data file (default: data.py)", default=None)
+    
+    args = parser.parse_args()
+    
+    data_module = None
+    
+    if args.input:
+        if os.path.exists(args.input):
+            print(f"Loading data from {args.input}...")
+            data_module = load_data_module(args.input)
+        else:
+            print(f"Error: Input file {args.input} not found.")
+            sys.exit(1)
+    else:
+        # Default behavior: try to import data.py from current directory
+        # We use dynamic import here too to be consistent, or just try 'import data'
+        # To ensure we look in the current directory even if not in path correctly (though usually is)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        default_data_path = os.path.join(current_dir, "data.py")
+        
+        if os.path.exists(default_data_path):
+            print(f"Loading default data from {default_data_path}...")
+            data_module = load_data_module(default_data_path)
+        else:
+             print("Error: data.py not found in current directory and no input file provided.")
+             sys.exit(1)
+
+    if data_module:
+        try:
+            main_subnet = data_module.main_subnet
+            subnet_groups = data_module.subnet_groups
+            # map_title is optional? The original import expected it. Let's try to get it, default None
+            map_title = getattr(data_module, 'map_title', None)
+            
+            draw_network_diagram(main_subnet, subnet_groups, title=map_title)
+        except AttributeError as e:
+            print(f"Error: Data file missing required variables: {e}")
+            print("Expected 'main_subnet' and 'subnet_groups'.")
+
