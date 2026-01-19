@@ -6,6 +6,7 @@ subnet_groups = [
         "title": "Core",
         "comment": "Main\nServices",
         "show_full": False,
+        "color": "blue",  # Using color name
         "subnets": [
             "192.168.4.0/23",
             "192.168.16.0/22",
@@ -16,6 +17,7 @@ subnet_groups = [
         "title": "Secondary",
         "comment": "Secondary\nServices",
         "show_full": False,
+        "color": "green",  # Using color name
         "subnets": [
             "192.168.21.0/24",
             "192.168.22.0/23",
@@ -27,6 +29,7 @@ subnet_groups = [
         "title": "DMZ",
         "comment": "Public-Facing Services",
         "show_full": False,
+        "color": "orange",  # Using color name
         "subnets": [
             "192.168.0.0/22",
         ]
@@ -91,6 +94,7 @@ subnet_groups = [
         "title": "Lab/Dev",
         "comment": "Development & Testing",
         "show_full": False,
+        "color": "#c2c2f0",  # Using hex code directly
         "subnets": [
             "192.168.128.0/17",
         ]

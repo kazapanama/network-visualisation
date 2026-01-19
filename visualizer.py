@@ -7,6 +7,22 @@ import importlib.util
 import os
 
 
+# Available colors for subnet groups
+COLORS = {
+    'red': '#ff9999',
+    'blue': '#66b3ff',
+    'light_blue': '#b3e0ff',
+    'dark_blue': '#4d94ff',
+    'green': '#99ff99',
+    'orange': '#ffcc99',
+    'purple': '#c2c2f0',
+    'pink': '#ffb3e6',
+}
+
+# Default color cycle (for groups without explicit color)
+DEFAULT_COLORS = list(COLORS.values())
+
+
 def parse_network(cidr):
     try:
         return ipaddress.ip_network(cidr, strict=False)
@@ -53,6 +69,7 @@ def draw_network_diagram(main_cidr, subnet_groups, title=None, width_px=1400):
         group_comment = group.get('comment')
         cidrs_data = group.get('subnets', [])
         show_full = group.get('show_full', True)
+        group_color = group.get('color')  # Optional color specification
         
         group_subnets = []
         
@@ -138,7 +155,8 @@ def draw_network_diagram(main_cidr, subnet_groups, title=None, width_px=1400):
                     'end_int': end_ip_int,
                     'title': group_title,
                     'group_idx': group_idx,
-                    'comment': group_comment
+                    'comment': group_comment,
+                    'color': group_color
                 })
             except Exception as e:
                 print(f"Error parsing {cidr_str}: {e}")
@@ -157,6 +175,7 @@ def draw_network_diagram(main_cidr, subnet_groups, title=None, width_px=1400):
                 'title': group_title,
                 'group_idx': group_idx,
                 'comment': group_comment,
+                'color': group_color,
                 'show_full': False
             })
         else:
@@ -249,24 +268,28 @@ def render_plot(main_net, subnets_data, text_summaries, output_file, title=None,
 
     # Draw Subnets
     subnets_data.sort(key=lambda x: x['start_int'])
-    
-    colors = ['#ff9999', '#66b3ff', '#99ff99', '#ffcc99', '#c2c2f0', '#ffb3e6']
-    
+
     for i, item in enumerate(subnets_data):
         # Use custom coordinates
         s_start = item['start_int']
         s_end = item['end_int']
         s_width = s_end - s_start + 1
-        
+
         subnet_title = item['title']
         group_idx = item['group_idx']
         comment = item['comment']
         cidr_label = item['cidr_str']
-        
+        specified_color = item.get('color')
+
         # Determine color based on style
         if style == "colored":
-            color = colors[group_idx % len(colors)]
-            edge_color = 'none'
+            if specified_color:
+                # Use specified color (lookup by name or use hex directly)
+                color = COLORS.get(specified_color, specified_color)
+            else:
+                # Fall back to default color cycle
+                color = DEFAULT_COLORS[group_idx % len(DEFAULT_COLORS)]
+            edge_color = 'black'
         else:
             color = 'white' # B&W style
             edge_color = 'black'
