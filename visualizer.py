@@ -1,6 +1,7 @@
 import ipaddress
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+from matplotlib.collections import LineCollection
 import sys
 import argparse
 import importlib.util
@@ -68,6 +69,8 @@ def spread_positions(positions, min_gap, lo, hi):
 def draw_tick_labels(fig, ax, ticks, labels, fontsize=8):
     # Tick marks stay at their true positions. Labels that would collide are
     # spread apart and connected to their tick with a thin leader line.
+    # Marks and leaders are drawn as one LineCollection instead of matplotlib
+    # ticks: it looks the same but renders much faster (matters for the editor).
     px_per_pt = fig.dpi / 72
     (x0, y0), (x1, y1) = ax.transData.inverted().transform([(0, 0), (px_per_pt, px_per_pt)])
     x_per_pt, y_per_pt = x1 - x0, y1 - y0
@@ -84,16 +87,16 @@ def draw_tick_labels(fig, ax, ticks, labels, fontsize=8):
     stub, slant = (2, 8) if moved else (0, 0)
     label_top = tick_len + 2 * stub + slant + (1.5 if moved else pad)
 
+    lines = []
     for tick, label_pt, label in zip(ticks, label_pts, labels):
         label_x = x0 + label_pt * x_per_pt
         if moved:
-            ax.plot(
-                [tick, tick, label_x, label_x],
-                [-y * y_per_pt for y in (tick_len, tick_len + stub, tick_len + stub + slant, tick_len + 2 * stub + slant)],
-                color='black',
-                linewidth=plt.rcParams['xtick.major.width'],
-                clip_on=False
-            )
+            lines.append([
+                (tick, 0), (tick, -(tick_len + stub) * y_per_pt),
+                (label_x, -(tick_len + stub + slant) * y_per_pt), (label_x, -(tick_len + 2 * stub + slant) * y_per_pt)
+            ])
+        else:
+            lines.append([(tick, 0), (tick, -tick_len * y_per_pt)])
         ax.text(
             label_x,
             -label_top * y_per_pt,
@@ -103,19 +106,24 @@ def draw_tick_labels(fig, ax, ticks, labels, fontsize=8):
             fontsize=fontsize,
             rotation=90
         )
+    ax.add_collection(LineCollection(
+        lines,
+        colors='black',
+        linewidths=plt.rcParams['xtick.major.width'],
+        capstyle='butt',
+        joinstyle='round',
+        clip_on=False
+    ), autolim=False)
 
-def draw_network_diagram(main_cidr, subnet_groups, title=None, width_px=1400):
-    main_net = parse_network(main_cidr)
-    if not main_net:
-        return
-    
-    # Convert pixels to inches (matplotlib uses inches, 100 DPI default)
-    # Hardcode A4 Landscape dimensions
-    # A4 is 297mm x 210mm
-    # 297mm / 25.4 = 11.69 inches
-    # 210mm / 25.4 = 8.27 inches
-    width_inches = 11.69
-    height_inches = 8.27
+def prepare_subnets(main_net, subnet_groups, messages=None):
+    # Turns subnet_groups into render data: a list of blocks and a list of
+    # text summary lines. Problems are appended to `messages` if given,
+    # otherwise printed.
+    def report(msg):
+        if messages is None:
+            print(msg)
+        else:
+            messages.append(msg)
 
     # Parse all subnets and store with metadata
     parsed_subnets = []
@@ -209,7 +217,7 @@ def draw_network_diagram(main_cidr, subnet_groups, title=None, width_px=1400):
                 
                 # Warn if outside but don't skip (respect user input)
                 if start_ip_int < main_start or end_ip_int > main_end:
-                     print(f"Warning: {cidr_str} extends outside main network boundaries.")
+                     report(f"Warning: {cidr_str} extends outside main network boundaries.")
                      # continue # Don't skip, draw it anyway
 
                 group_subnets.append({
@@ -223,7 +231,7 @@ def draw_network_diagram(main_cidr, subnet_groups, title=None, width_px=1400):
                     'color': group_color
                 })
             except Exception as e:
-                print(f"Error parsing {cidr_str}: {e}")
+                report(f"Error parsing {cidr_str}: {e}")
                 continue
         
         # If show_full is False, consolidate all subnets into one block
@@ -248,6 +256,23 @@ def draw_network_diagram(main_cidr, subnet_groups, title=None, width_px=1400):
                 subnet['show_full'] = True
             parsed_subnets.extend(group_subnets)
 
+    return parsed_subnets, group_text_summaries
+
+def draw_network_diagram(main_cidr, subnet_groups, title=None, width_px=1400):
+    main_net = parse_network(main_cidr)
+    if not main_net:
+        return
+    
+    # Convert pixels to inches (matplotlib uses inches, 100 DPI default)
+    # Hardcode A4 Landscape dimensions
+    # A4 is 297mm x 210mm
+    # 297mm / 25.4 = 11.69 inches
+    # 210mm / 25.4 = 8.27 inches
+    width_inches = 11.69
+    height_inches = 8.27
+
+    parsed_subnets, group_text_summaries = prepare_subnets(main_net, subnet_groups)
+
     # Generate Colored Version
     render_plot(main_net, parsed_subnets, group_text_summaries, "subnet_map.png", title=title, style="colored", width_inches=width_inches, height_inches=height_inches)
     
@@ -255,8 +280,21 @@ def draw_network_diagram(main_cidr, subnet_groups, title=None, width_px=1400):
     render_plot(main_net, parsed_subnets, group_text_summaries, "subnet_map_bw.png", title=title, style="bw", width_inches=width_inches, height_inches=height_inches)
 
 def render_plot(main_net, subnets_data, text_summaries, output_file, title=None, style="colored", width_inches=11.69, height_inches=8.27):
-    # Setup plot
-    fig, ax = plt.subplots(figsize=(width_inches, height_inches))
+    fig = plt.figure(figsize=(width_inches, height_inches))
+    draw_map(fig, main_net, subnets_data, text_summaries, title=title, style=style)
+
+    # Save
+    print(f"Saving visualization to {output_file}...")
+    fig.savefig(output_file, dpi=300)
+    plt.close(fig)
+    print("Done.")
+
+def draw_map(fig, main_net, subnets_data, text_summaries, title=None, style="colored"):
+    # Draws the whole map into `fig` and returns the axes.
+    # Layout is defined in physical units (inches/points), so the result looks
+    # the same at any dpi - on screen in the editor and in the exported file.
+    width_inches, height_inches = fig.get_size_inches()
+    ax = fig.add_subplot()
     
     # 0.5 cm margin settings
     # 0.5 cm in inches is approx 0.197
@@ -269,7 +307,7 @@ def render_plot(main_net, subnets_data, text_summaries, output_file, title=None,
     top = 1 - (margin_in / height_inches)
     
     # Adjust strictly
-    plt.subplots_adjust(left=left, right=right, top=top, bottom=bottom)
+    fig.subplots_adjust(left=left, right=right, top=top, bottom=bottom)
     
     # Define X axis limits based on main network
     start_ip_int = ip_to_int(main_net.network_address)
@@ -315,8 +353,7 @@ def render_plot(main_net, subnets_data, text_summaries, output_file, title=None,
     
     tick_labels = [str(ipaddress.ip_address(t)) for t in visible_ticks]
     
-    ax.set_xticks(visible_ticks)
-    ax.set_xticklabels([])
+    ax.set_xticks([])
     draw_tick_labels(fig, ax, visible_ticks, tick_labels, fontsize=8)
 
     # Draw Main Network (Base Line/Bar)
@@ -441,11 +478,7 @@ def render_plot(main_net, subnets_data, text_summaries, output_file, title=None,
             family='monospace'
         )
 
-    # Save
-    print(f"Saving visualization to {output_file}...")
-    plt.savefig(output_file, dpi=300)
-    plt.close(fig)
-    print("Done.")
+    return ax
 
 def load_data_module(file_path):
     try:

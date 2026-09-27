@@ -3,3 +3,6 @@ subnet_map.png
 subnet_map_bw.png
 __pycache__
 data/
+build/
+dist/
+*.spec
