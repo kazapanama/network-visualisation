@@ -40,6 +40,70 @@ def get_third_octet(ip_int):
     # We want C.
     return (ip_int >> 8) & 0xFF
 
+def spread_positions(positions, min_gap, lo, hi):
+    # Push sorted 1-D positions apart so neighbours are at least min_gap apart,
+    # moving each one as little as possible and keeping them within [lo, hi].
+    # Overlapping labels are merged into clusters; a cluster is laid out with
+    # exact min_gap spacing and centered on the targets of its members.
+    def cluster_start(cluster):
+        start = sum(t - k * min_gap for k, t in enumerate(cluster)) / len(cluster)
+        return min(max(start, lo), hi - (len(cluster) - 1) * min_gap)
+
+    clusters = []
+    for p in positions:
+        clusters.append([p])
+        while len(clusters) > 1:
+            prev = clusters[-2]
+            prev_end = cluster_start(prev) + (len(prev) - 1) * min_gap
+            if cluster_start(clusters[-1]) - prev_end >= min_gap:
+                break
+            clusters[-2:] = [prev + clusters[-1]]
+
+    result = []
+    for cluster in clusters:
+        start = cluster_start(cluster)
+        result.extend(start + k * min_gap for k in range(len(cluster)))
+    return result
+
+def draw_tick_labels(fig, ax, ticks, labels, fontsize=8):
+    # Tick marks stay at their true positions. Labels that would collide are
+    # spread apart and connected to their tick with a thin leader line.
+    px_per_pt = fig.dpi / 72
+    (x0, y0), (x1, y1) = ax.transData.inverted().transform([(0, 0), (px_per_pt, px_per_pt)])
+    x_per_pt, y_per_pt = x1 - x0, y1 - y0
+
+    to_pt = lambda x: (x - x0) / x_per_pt
+    min_gap = fontsize * 1.4  # height of a rotated label + small spacing
+    lo, hi = (to_pt(x) for x in ax.get_xlim())
+    tick_pts = [to_pt(t) for t in ticks]
+    label_pts = spread_positions(tick_pts, min_gap, lo + min_gap / 2, hi - min_gap / 2)
+
+    tick_len = plt.rcParams['xtick.major.size']
+    pad = plt.rcParams['xtick.major.pad']
+    moved = any(abs(lp - tp) > 0.01 for tp, lp in zip(tick_pts, label_pts))
+    stub, slant = (2, 8) if moved else (0, 0)
+    label_top = tick_len + 2 * stub + slant + (1.5 if moved else pad)
+
+    for tick, label_pt, label in zip(ticks, label_pts, labels):
+        label_x = x0 + label_pt * x_per_pt
+        if moved:
+            ax.plot(
+                [tick, tick, label_x, label_x],
+                [-y * y_per_pt for y in (tick_len, tick_len + stub, tick_len + stub + slant, tick_len + 2 * stub + slant)],
+                color='black',
+                linewidth=plt.rcParams['xtick.major.width'],
+                clip_on=False
+            )
+        ax.text(
+            label_x,
+            -label_top * y_per_pt,
+            label,
+            ha='center',
+            va='top',
+            fontsize=fontsize,
+            rotation=90
+        )
+
 def draw_network_diagram(main_cidr, subnet_groups, title=None, width_px=1400):
     main_net = parse_network(main_cidr)
     if not main_net:
@@ -252,7 +316,8 @@ def render_plot(main_net, subnets_data, text_summaries, output_file, title=None,
     tick_labels = [str(ipaddress.ip_address(t)) for t in visible_ticks]
     
     ax.set_xticks(visible_ticks)
-    ax.set_xticklabels(tick_labels, rotation=90, ha='center', fontsize=8)
+    ax.set_xticklabels([])
+    draw_tick_labels(fig, ax, visible_ticks, tick_labels, fontsize=8)
 
     # Draw Main Network (Base Line/Bar)
     main_rect = patches.Rectangle(
