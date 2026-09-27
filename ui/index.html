@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Subnet Editor</title>
+  <link rel="icon" href="icon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app" class="app booting">
+
+  <header class="topbar">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="3" y="9" width="8" height="14" rx="2.5" fill="#8fb8ff"/>
+        <rect x="12" y="9" width="11" height="14" rx="2.5" fill="#9be7a8"/>
+        <rect x="24" y="9" width="5" height="14" rx="2" fill="#ffc98f"/>
+        <rect x="3" y="25.5" width="26" height="2" rx="1" fill="currentColor" opacity=".35"/>
+      </svg>
+      <div class="doc-title">
+        <span class="app-name">Subnet Editor</span>
+        <span class="doc-name"><span id="docName">Без назви</span><i id="dirtyDot" class="dirty-dot" title="Є незбережені зміни"></i></span>
+      </div>
+    </div>
+
+    <div class="tb-group">
+      <button class="btn ghost" data-action="new" data-tip="Новий документ · Ctrl+N"><i data-icon="file-plus"></i></button>
+      <div class="split">
+        <button class="btn ghost" data-action="open" data-tip="Відкрити дані · Ctrl+O"><i data-icon="folder"></i><span>Відкрити</span></button>
+        <button class="btn ghost caret" data-action="recent" data-tip="Нещодавні файли"><i data-icon="chevron-down"></i></button>
+      </div>
+      <button class="btn ghost" data-action="save" data-tip="Зберегти · Ctrl+S"><i data-icon="save"></i><span>Зберегти</span></button>
+    </div>
+
+    <div class="tb-group">
+      <button class="btn ghost icon" data-action="undo" data-tip="Скасувати · Ctrl+Z"><i data-icon="undo"></i></button>
+      <button class="btn ghost icon" data-action="redo" data-tip="Повторити · Ctrl+Y"><i data-icon="redo"></i></button>
+    </div>
+
+    <div class="segmented" id="modeSwitch" role="tablist">
+      <span class="seg-thumb"></span>
+      <button data-mode="edit" class="active"><i data-icon="edit"></i>Редактор</button>
+      <button data-mode="print"><i data-icon="printer"></i>Друк</button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <button id="warnBtn" class="warn-pill" data-action="warnings" data-tip="Попередження в даних">
+      <i data-icon="alert"></i><span id="warnCount">0</span>
+    </button>
+    <button class="btn ghost icon" data-action="theme" data-tip="Світла / темна тема"><i data-icon="moon"></i></button>
+    <button class="btn ghost icon" data-action="help" data-tip="Як користуватися · F1"><i data-icon="help"></i></button>
+    <button class="btn primary" data-action="export" data-tip="Зберегти карту як зображення · Ctrl+E"><i data-icon="download"></i><span>Експорт</span></button>
+  </header>
+
+  <main class="workspace">
+
+    <aside class="sidebar">
+      <section class="doc-card">
+        <label class="field">
+          <span class="field-label">Мережа</span>
+          <input id="mainInput" class="input mono" spellcheck="false" placeholder="192.168.0.0/16">
+          <span id="mainHint" class="field-hint"></span>
+        </label>
+        <label class="field">
+          <span class="field-label">Заголовок карти</span>
+          <input id="titleInput" class="input" spellcheck="false">
+        </label>
+        <div class="usage">
+          <div class="usage-bar"><div id="usageFill" class="usage-fill"></div></div>
+          <div class="usage-text"><span id="usageUsed"></span><span id="usageFree"></span></div>
+        </div>
+      </section>
+
+      <div class="list-head">
+        <span>Групи <span id="groupCount" class="count"></span></span>
+        <button class="btn soft small" data-action="add" data-tip="Додати групу у вільне місце"><i data-icon="plus"></i>Додати</button>
+      </div>
+      <div id="groupList" class="group-list"></div>
+      <p class="list-foot">Порядок груп = порядок у легенді на друці. Перетягніть картку, щоб змінити.</p>
+    </aside>
+
+    <section class="stage">
+      <div class="view edit-view">
+        <div class="stage-toolbar">
+          <div class="zoom-controls">
+            <button class="btn ghost icon" data-action="zoom-out" data-tip="Віддалити · −"><i data-icon="minus"></i></button>
+            <span id="zoomLabel" class="zoom-label">×1</span>
+            <button class="btn ghost icon" data-action="zoom-in" data-tip="Наблизити · +"><i data-icon="plus"></i></button>
+            <button class="btn ghost small" data-action="fit" data-tip="Показати всю мережу · 0"><i data-icon="maximize"></i>Вся мережа</button>
+            <button class="btn ghost small" data-action="focus" data-tip="Наблизити до вибраної групи · F"><i data-icon="target"></i>До групи</button>
+          </div>
+          <div class="snap-control" data-tip="До якого розміру вирівнюються межі при перетягуванні. «Авто» — залежно від масштабу: наблизьте, щоб крок став дрібнішим.">
+            <span class="snap-label">Крок</span>
+            <select id="snapSelect" class="select mono"></select>
+          </div>
+          <span id="stageHint" class="stage-hint"></span>
+        </div>
+
+        <div id="viewport" class="viewport">
+          <canvas id="gridCanvas" class="grid-canvas"></canvas>
+          <div id="lane" class="lane animate">
+            <div id="freeLayer"></div>
+            <div id="blockLayer"></div>
+            <div id="overlapLayer"></div>
+            <div id="ghostLayer"></div>
+          </div>
+          <div id="flagLayer" class="flag-layer"></div>
+          <div id="badgeLayer" class="badge-layer"></div>
+          <div id="emptyState" class="empty-state">
+            <div class="empty-illo">
+              <span></span><span></span><span></span>
+            </div>
+            <h3>Карта порожня</h3>
+            <p>Потягніть мишею по шкалі, щоб «намалювати» першу групу,<br>або натисніть кнопку нижче.</p>
+            <button class="btn primary" data-action="add"><i data-icon="plus"></i>Додати групу</button>
+          </div>
+          <div id="invalidState" class="empty-state invalid">
+            <h3>Некоректна мережа</h3>
+            <p>Вкажіть мережу ліворуч у форматі <code>192.168.0.0/16</code></p>
+          </div>
+        </div>
+
+        <div class="minimap-row">
+          <div id="minimap" class="minimap" data-tip="Огляд усієї мережі. Клікніть або перетягніть рамку, щоб перейти.">
+            <canvas id="minimapCanvas"></canvas>
+            <div id="minimapWindow" class="minimap-window"></div>
+          </div>
+        </div>
+
+        <button id="miniPreview" class="mini-preview" data-tip="Так карта виглядатиме на друці. Клікніть, щоб відкрити.">
+          <span class="mini-preview-label"><i data-icon="printer"></i>Друк</span>
+          <img id="miniPreviewImg" alt="">
+          <span class="mini-close" data-action="hide-mini" data-tip="Сховати"><i data-icon="x"></i></span>
+        </button>
+        <button id="miniPreviewShow" class="mini-preview-show" data-action="show-mini" data-tip="Показати превʼю друку"><i data-icon="printer"></i></button>
+      </div>
+
+      <div class="view print-view">
+        <div class="print-toolbar">
+          <div class="segmented small" id="styleSwitch">
+            <span class="seg-thumb"></span>
+            <button data-style="colored" class="active">Кольорова</button>
+            <button data-style="bw">Чорно-біла</button>
+          </div>
+          <span class="print-note">A4, альбомна · так виглядатиме експорт</span>
+          <div class="spacer"></div>
+          <button class="btn soft" data-export="png"><i data-icon="image"></i>PNG</button>
+          <button class="btn soft" data-export="pdf"><i data-icon="file"></i>PDF</button>
+          <button class="btn soft" data-export="svg"><i data-icon="code"></i>SVG</button>
+        </div>
+        <div class="paper-wrap">
+          <div id="paper" class="paper loading">
+            <img id="printImg" alt="">
+            <div class="paper-shimmer"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside id="inspector" class="inspector"></aside>
+  </main>
+
+  <div id="toasts" class="toasts"></div>
+  <div id="tooltip" class="tooltip"></div>
+  <div id="popover" class="popover"></div>
+  <div id="ctxMenu" class="ctx" role="menu"></div>
+  <div id="modal" class="modal-backdrop"><div class="modal" role="dialog"></div></div>
+  <div class="splash"><div class="splash-logo"><span></span><span></span><span></span></div></div>
+</div>
+<script src="net.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

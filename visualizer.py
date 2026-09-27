@@ -7,21 +7,7 @@ import argparse
 import importlib.util
 import os
 
-
-# Available colors for subnet groups
-COLORS = {
-    'red': '#ff9999',
-    'blue': '#66b3ff',
-    'light_blue': '#b3e0ff',
-    'dark_blue': '#4d94ff',
-    'green': '#99ff99',
-    'orange': '#ffcc99',
-    'purple': '#c2c2f0',
-    'pink': '#ffb3e6',
-}
-
-# Default color cycle (for groups without explicit color)
-DEFAULT_COLORS = list(COLORS.values())
+from palette import COLORS, DEFAULT_COLORS
 
 
 def parse_network(cidr):
@@ -371,6 +357,14 @@ def draw_map(fig, main_net, subnets_data, text_summaries, title=None, style="col
     # Draw Subnets
     subnets_data.sort(key=lambda x: x['start_int'])
 
+    # With show_full a group is drawn as several blocks: its title goes into
+    # the widest one only, the others show just their CIDR
+    widest = {}
+    for item in subnets_data:
+        best = widest.get(item['group_idx'])
+        if best is None or item['end_int'] - item['start_int'] > best['end_int'] - best['start_int']:
+            widest[item['group_idx']] = item
+
     for i, item in enumerate(subnets_data):
         # Use custom coordinates
         s_start = item['start_int']
@@ -379,7 +373,6 @@ def draw_map(fig, main_net, subnets_data, text_summaries, title=None, style="col
 
         subnet_title = item['title']
         group_idx = item['group_idx']
-        comment = item['comment']
         cidr_label = item['cidr_str']
         specified_color = item.get('color')
 
@@ -410,7 +403,7 @@ def draw_map(fig, main_net, subnets_data, text_summaries, title=None, style="col
         # Label (Title + CIDR) inside the block
         # Only show CIDR if show_full is True or cidr_label exists
         if cidr_label:
-            label_text = f"{subnet_title}\n{cidr_label}"
+            label_text = f"{subnet_title}\n{cidr_label}" if subnet_title and widest[group_idx] is item else cidr_label
         else:
             label_text = subnet_title
         
@@ -423,18 +416,27 @@ def draw_map(fig, main_net, subnets_data, text_summaries, title=None, style="col
             fontsize=8, 
             rotation=90 if s_width < total_hosts * 0.08 else 0
         )
-        
-        # Comment above the block
+
+    # Comment above each group - once per group, centered over all of its
+    # blocks (with show_full a group is drawn as several blocks)
+    group_spans = {}
+    for item in subnets_data:
+        span = group_spans.setdefault(item['group_idx'], [item['start_int'], item['end_int'], item['comment']])
+        span[0] = min(span[0], item['start_int'])
+        span[1] = max(span[1], item['end_int'])
+
+    for g_start, g_end, comment in group_spans.values():
         if comment:
+            g_width = g_end - g_start + 1
             ax.text(
-                s_start + s_width/2, 
+                g_start + g_width/2, 
                 1.1, 
                 comment, 
                 ha='center', 
                 va='bottom', 
                 fontsize=8, 
                 fontstyle='italic',
-                rotation=90 if s_width < total_hosts * 0.08 else 0
+                rotation=90 if g_width < total_hosts * 0.08 else 0
             )
 
     # Title - Manually placed close to diagram
