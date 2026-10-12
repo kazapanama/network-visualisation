@@ -90,13 +90,15 @@
 
   // ================================================================ bridge
 
-  const DEV = new URLSearchParams(location.search).has('dev');
+  // ?dev / ?http: the UI runs in a normal browser and talks to Python over http
+  const params = new URLSearchParams(location.search);
+  const HTTP = params.has('dev') || params.has('http');
   const api = new Proxy({}, {
-    get: (_, name) => (...args) => DEV
+    get: (_, name) => (...args) => HTTP
       ? fetch(`/api/${name}`, { method: 'POST', body: JSON.stringify(args) }).then(r => r.json())
       : window.pywebview.api[name](...args),
   });
-  const bridgeReady = () => (DEV || (window.pywebview && window.pywebview.api && window.pywebview.api.init))
+  const bridgeReady = () => (HTTP || (window.pywebview && window.pywebview.api && window.pywebview.api.init))
     ? Promise.resolve()
     : new Promise(resolve => window.addEventListener('pywebviewready', resolve, { once: true }));
 
@@ -2255,6 +2257,7 @@
     const wrap = $('.paper-wrap');
     const w = Math.max(200, Math.min(wrap.clientWidth - 56, (wrap.clientHeight - 56) * 297 / 210));
     $('#paper').style.width = `${w}px`;
+    $('#paper').style.height = `${w * 210 / 297}px`;  // aspect-ratio is not supported by older browsers
   }
 
   let previewTimer = 0, previewSeq = 0;
@@ -2510,7 +2513,13 @@
     }
   });
 
-  window.addEventListener('beforeunload', e => { if (DEV && isDirty()) e.preventDefault(); });
+  // In a browser window the close can't be intercepted by Python - use the browser's own prompt
+  window.addEventListener('beforeunload', e => {
+    if (HTTP && state.doc && isDirty()) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
 
   new ResizeObserver(() => {
     if (!D) return;

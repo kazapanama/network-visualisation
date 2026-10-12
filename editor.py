@@ -6,6 +6,7 @@ and rendering the print version with visualizer.draw_map (PNG/PDF/SVG).
 
     python editor.py [data.py]                       - open the editor
     python editor.py data.py --export map.pdf [--bw] - export without a window
+    python editor.py --browser [data.py]             - open in Chrome/Edge instead of WebView2
     python editor.py --dev                           - serve the UI for a browser (development)
 """
 import argparse
@@ -13,8 +14,10 @@ import base64
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 
 import model
@@ -214,10 +217,12 @@ class Api:
     # --- internals
 
     def _dialog(self, kind, **kwargs):
-        import webview
-        if not self._window:
-            return None
         directory = os.path.dirname(self._settings.get('last_file') or '') or os.path.expanduser('~')
+        if not self._window:
+            # browser mode: no pywebview window, use the Windows dialog directly
+            import winsys
+            return winsys.file_dialog(kind, directory=directory, **kwargs)
+        import webview
         dialog_type = webview.FileDialog.OPEN if kind == 'open' else webview.FileDialog.SAVE
         result = self._window.create_file_dialog(dialog_type, directory=directory, **kwargs)
         if not result:
@@ -259,14 +264,14 @@ def run_window(path):
     window.events.loaded += lambda: threading.Thread(target=viz, daemon=True).start()
     # private_mode: a fresh WebView2 profile per run. A shared profile folder hangs a new
     # instance while a crashed/killed one still holds it (settings are kept by Python anyway).
-    webview.start(private_mode=True)
+    # gui='edgechromium': never fall back to Internet Explorer, it cannot run the UI.
+    webview.start(gui='edgechromium', private_mode=True)
 
 
-def run_dev_server(port):
-    # Serves ui/ over http with the API as POST /api/<method>; dialogs are
-    # unavailable here. Used to develop and test the UI in a normal browser.
+def make_http_server(api, port):
+    # Serves ui/ over http with the API as POST /api/<method> - used when the UI
+    # runs in a normal browser (browser fallback, development)
     from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-    api = Api()
 
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
@@ -287,8 +292,38 @@ def run_dev_server(port):
         def log_message(self, *args):
             pass
 
+        def end_headers(self):
+            self.send_header('Cache-Control', 'no-store')
+            super().end_headers()
+
+    return ThreadingHTTPServer(('127.0.0.1', port), Handler)
+
+
+def run_dev_server(port):
+    server = make_http_server(Api(), port)
     print(f'http://127.0.0.1:{port}/index.html?dev=1', flush=True)
-    ThreadingHTTPServer(('127.0.0.1', port), Handler).serve_forever()
+    server.serve_forever()
+
+
+def run_browser(path, browser):
+    # Fallback without WebView2: the UI in a Chrome/Edge app window (no tabs or
+    # address bar). A separate temporary profile makes the browser a process of
+    # its own, so the editor exits when that window is closed.
+    api = Api(path)
+    server = make_http_server(api, 0)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    threading.Thread(target=viz, daemon=True).start()
+    profile = tempfile.mkdtemp(prefix='SubnetEditor-')
+    url = f'http://127.0.0.1:{server.server_address[1]}/index.html?http=1'
+    try:
+        subprocess.Popen([
+            browser, f'--app={url}', f'--user-data-dir={profile}', '--window-size=1440,900',
+            '--no-first-run', '--no-default-browser-check', '--disable-extensions',
+            '--disable-features=Translate', '--disable-sync',
+        ]).wait()
+    finally:
+        server.shutdown()
+        shutil.rmtree(profile, ignore_errors=True)
 
 
 def fix_windowed_streams():
@@ -310,6 +345,7 @@ def main():
     parser.add_argument('data', nargs='?', help='файл даних (.py або .json)')
     parser.add_argument('--export', metavar='FILE', help='без вікна: зберегти карту у FILE (.png/.pdf/.svg) і вийти')
     parser.add_argument('--bw', action='store_true', help='чорно-білий варіант для --export')
+    parser.add_argument('--browser', action='store_true', help='відкрити в Chrome/Edge замість WebView2')
     parser.add_argument('--dev', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--port', type=int, default=8777, help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -321,7 +357,21 @@ def main():
     elif args.dev:
         run_dev_server(args.port)
     else:
-        run_window(args.data)
+        import winsys
+        webview2 = winsys.webview2_version()
+        browser = winsys.find_chromium() if args.browser or not webview2 else None
+        if browser:
+            run_browser(args.data, browser)
+        elif webview2:
+            run_window(args.data)
+        else:
+            winsys.message_box(APP_NAME, (
+                'Для роботи редактора потрібен один із компонентів:\n\n'
+                '• Microsoft Edge WebView2 Runtime (є у Windows 11), або\n'
+                '• браузер Google Chrome чи Microsoft Edge.\n\n'
+                'WebView2 Runtime можна встановити без інтернету — інсталятор '
+                '"Evergreen Standalone Installer":\n' + winsys.WEBVIEW2_DOWNLOAD
+            ))
 
 
 if __name__ == '__main__':

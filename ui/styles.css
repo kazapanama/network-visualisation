@@ -189,7 +189,7 @@ textarea.input { height: auto; min-height: 58px; padding: 7px 10px; resize: none
   transition: background .15s, border-color .15s, box-shadow .2s, opacity .2s;
 }
 .gcard:hover { background: var(--hover); }
-.gcard.selected { background: var(--accent-soft); border-color: color-mix(in oklab, var(--accent) 35%, transparent); }
+.gcard.selected { background: var(--accent-soft); border-color: var(--accent); border-color: color-mix(in oklab, var(--accent) 35%, transparent); }
 .gcard.dragging { box-shadow: var(--shadow-lg); z-index: 5; background: var(--panel); cursor: grabbing; transition: box-shadow .2s; }
 .gcard.enter { animation: slideIn .35s var(--ease); }
 .gcard .dot { width: 12px; height: 12px; border-radius: 4px; background: var(--c); box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
@@ -201,7 +201,7 @@ textarea.input { height: auto; min-height: 58px; padding: 7px 10px; resize: none
 
 /* ------------------------------------------------------------ stage */
 .stage { position: relative; min-width: 0; overflow: hidden; background: var(--stage); }
-.view { position: absolute; inset: 0; transition: opacity .3s var(--ease), transform .35s var(--ease); }
+.view { position: absolute; top: 0; right: 0; bottom: 0; left: 0; transition: opacity .3s var(--ease), transform .35s var(--ease); }
 .edit-view { display: grid; grid-template-rows: 48px 1fr 58px; }
 .print-view { display: grid; grid-template-rows: 52px 1fr; opacity: 0; transform: translateY(14px) scale(.985); pointer-events: none; }
 .app.mode-print .edit-view { opacity: 0; transform: translateY(-10px) scale(.985); pointer-events: none; }
@@ -209,7 +209,7 @@ textarea.input { height: auto; min-height: 58px; padding: 7px 10px; resize: none
 
 .stage-toolbar {
   display: flex; align-items: center; gap: 16px; padding: 0 14px;
-  border-bottom: 1px solid var(--border); background: color-mix(in oklab, var(--panel) 75%, transparent);
+  border-bottom: 1px solid var(--border); background: var(--panel); background: color-mix(in oklab, var(--panel) 75%, transparent);
   backdrop-filter: blur(8px);
 }
 .zoom-controls { display: flex; align-items: center; gap: 2px; }
@@ -224,9 +224,9 @@ textarea.input { height: auto; min-height: 58px; padding: 7px 10px; resize: none
   background-size: 18px 18px;
 }
 .viewport.panning, .viewport.panning * { cursor: grabbing !important; }
-.grid-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.grid-canvas { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
 .lane { position: absolute; left: 0; right: 0; }
-.lane > div { position: absolute; inset: 0; }
+.lane > div { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
 #blockLayer, #freeLayer { pointer-events: none; }
 #blockLayer > *, #freeLayer > * { pointer-events: auto; }
 #overlapLayer, #ghostLayer { pointer-events: none; }
@@ -236,6 +236,7 @@ textarea.input { height: auto; min-height: 58px; padding: 7px 10px; resize: none
 .block {
   position: absolute; top: 0; bottom: 0;
   background: var(--c);
+  border: 1px solid rgba(0, 0, 0, .32);
   border: 1px solid color-mix(in oklab, var(--c) 62%, #000);
   border-radius: var(--r, 9px);
   color: var(--fg, #1b1f24);
@@ -256,14 +257,14 @@ textarea.input { height: auto; min-height: 58px; padding: 7px 10px; resize: none
 .block.flash { animation: flash .9s var(--ease); outline-offset: 3px; }
 .block.invalid-bg { background-image: repeating-linear-gradient(135deg, rgba(0,0,0,.08) 0 6px, transparent 6px 12px); }
 
-.bl-inner { position: absolute; inset: 0; padding: 10px 12px; overflow: hidden; display: flex; flex-direction: column; justify-content: center; gap: 3px; pointer-events: none; }
+.bl-inner { position: absolute; top: 0; right: 0; bottom: 0; left: 0; padding: 10px 12px; overflow: hidden; display: flex; flex-direction: column; justify-content: center; gap: 3px; pointer-events: none; }
 .bl-title { font-weight: 650; font-size: 13.5px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bl-meta { font-family: var(--mono); font-size: 11px; opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bl-comment { font-size: 11.5px; font-style: italic; opacity: .7; white-space: pre-line; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .block.l-vert .bl-inner { padding: 8px 0; align-items: center; }
 .block.l-vert .bl-title { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 12.5px; max-height: 100%; }
 .block.l-vert .bl-meta, .block.l-vert .bl-comment, .block.l-none .bl-inner { display: none; }
-.divider { position: absolute; top: 12%; bottom: 12%; width: 0; border-left: 1px dashed color-mix(in oklab, var(--c) 45%, #000); opacity: .55; pointer-events: none; }
+.divider { position: absolute; top: 12%; bottom: 12%; width: 0; border-left: 1px dashed rgba(0, 0, 0, .4); border-left: 1px dashed color-mix(in oklab, var(--c) 45%, #000); opacity: .55; pointer-events: none; }
 
 .handle {
   position: absolute; top: 50%; width: 14px; height: 44px; margin-top: -22px;
@@ -285,6 +286,7 @@ textarea.input { height: auto; min-height: 58px; padding: 7px 10px; resize: none
 .free {
   position: absolute; top: 8px; bottom: 8px;
   border: 1.5px dashed var(--border-strong); border-radius: 9px;
+  background: repeating-linear-gradient(135deg, transparent 0 7px, var(--border) 7px 8px);
   background: repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in oklab, var(--border) 45%, transparent) 7px 8px);
   display: flex; align-items: center; justify-content: center;
   color: var(--muted); font-size: 12px; opacity: .8;
@@ -292,7 +294,7 @@ textarea.input { height: auto; min-height: 58px; padding: 7px 10px; resize: none
 }
 .free span { white-space: nowrap; overflow: hidden; padding: 0 6px; text-align: center; line-height: 1.35; }
 .free span b { display: block; font-family: var(--mono); font-weight: 500; font-size: 11px; }
-.free:hover { opacity: 1; border-color: var(--accent); background-color: color-mix(in oklab, var(--accent-soft) 60%, transparent); color: var(--accent); }
+.free:hover { opacity: 1; border-color: var(--accent); background-color: var(--accent-soft); background-color: color-mix(in oklab, var(--accent-soft) 60%, transparent); color: var(--accent); }
 
 .overlap {
   position: absolute; top: -6px; bottom: -6px; z-index: 5;
@@ -304,6 +306,7 @@ textarea.input { height: auto; min-height: 58px; padding: 7px 10px; resize: none
 .create-ghost {
   position: absolute; top: 0; bottom: 0;
   border: 2px dashed var(--accent); border-radius: 9px;
+  background: rgba(91, 91, 214, .12);
   background: color-mix(in oklab, var(--accent) 12%, transparent);
   display: flex; align-items: center; justify-content: center;
   color: var(--accent); font-weight: 600; font-size: 12px; overflow: hidden; white-space: nowrap;
@@ -353,12 +356,12 @@ textarea.input { height: auto; min-height: 58px; padding: 7px 10px; resize: none
 .empty-state.invalid h3 { color: var(--danger); }
 
 /* minimap */
-.minimap-row { padding: 10px 14px 12px; border-top: 1px solid var(--border); background: color-mix(in oklab, var(--panel) 75%, transparent); }
+.minimap-row { padding: 10px 14px 12px; border-top: 1px solid var(--border); background: var(--panel); background: color-mix(in oklab, var(--panel) 75%, transparent); }
 .minimap { position: relative; height: 34px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--border); cursor: pointer; overflow: hidden; }
-.minimap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.minimap canvas { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; }
 .minimap-window {
   position: absolute; top: 1px; bottom: 1px; border-radius: 6px;
-  border: 2px solid var(--accent); background: color-mix(in oklab, var(--accent) 10%, transparent);
+  border: 2px solid var(--accent); background: rgba(91, 91, 214, .1); background: color-mix(in oklab, var(--accent) 10%, transparent);
   cursor: grab; min-width: 6px;
 }
 
@@ -387,7 +390,7 @@ textarea.input { height: auto; min-height: 58px; padding: 7px 10px; resize: none
 .paper-wrap { position: relative; display: grid; place-items: center; padding: 28px; min-height: 0; overflow: hidden; }
 .paper { position: relative; aspect-ratio: 297 / 210; background: #fff; border-radius: 4px; box-shadow: var(--shadow-lg); overflow: hidden; }
 .paper img { display: block; width: 100%; height: 100%; transition: opacity .35s; }
-.paper-shimmer { position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.7) 50%, transparent 70%) #f3f4f6; background-size: 200% 100%; animation: shimmer 1.2s linear infinite; opacity: 0; transition: opacity .3s; pointer-events: none; }
+.paper-shimmer { position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.7) 50%, transparent 70%) #f3f4f6; background-size: 200% 100%; animation: shimmer 1.2s linear infinite; opacity: 0; transition: opacity .3s; pointer-events: none; }
 .paper.loading .paper-shimmer { opacity: 1; }
 .paper.loading img { opacity: 0; }
 .paper.updating img { opacity: .6; }
@@ -416,7 +419,7 @@ textarea.input { height: auto; min-height: 58px; padding: 7px 10px; resize: none
 .swatch.auto { background: conic-gradient(#ff9999, #ffcc99, #99ff99, #66b3ff, #c2c2f0, #ffb3e6, #ff9999); }
 .swatch.custom { background: var(--panel-2); box-shadow: inset 0 0 0 1px var(--border-strong); display: grid; place-items: center; color: var(--muted); overflow: hidden; }
 .swatch.custom.active { background: var(--c); color: transparent; }
-.swatch.custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.swatch.custom input { position: absolute; top: 0; right: 0; bottom: 0; left: 0; opacity: 0; cursor: pointer; }
 
 .toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; }
 .toggle input { display: none; }
@@ -546,7 +549,7 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; font-family: var
 .toast .t-btn { border: 0; background: rgba(255,255,255,.1); color: #fff; padding: 5px 10px; border-radius: 7px; cursor: pointer; font-weight: 600; }
 .toast .t-btn:hover { background: rgba(255,255,255,.2); }
 
-.modal-backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; background: rgba(10, 12, 18, .38); backdrop-filter: blur(3px); opacity: 0; pointer-events: none; transition: opacity .2s; }
+.modal-backdrop { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 120; display: grid; place-items: center; background: rgba(10, 12, 18, .38); backdrop-filter: blur(3px); opacity: 0; pointer-events: none; transition: opacity .2s; }
 .modal-backdrop.show { opacity: 1; pointer-events: auto; }
 .modal { width: min(520px, calc(100vw - 40px)); max-height: calc(100vh - 60px); overflow: auto; background: var(--panel); border-radius: 16px; box-shadow: var(--shadow-lg); padding: 22px; transform: translateY(12px) scale(.97); transition: transform .3s var(--spring); }
 .modal-backdrop.show .modal { transform: none; }
@@ -559,7 +562,7 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; font-family: var
 .help-row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-bottom: 1px dashed var(--border); font-size: 12.5px; }
 .help-row span:last-child { white-space: nowrap; }
 
-.splash { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center; background: var(--bg); transition: opacity .4s, visibility .4s; }
+.splash { position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 200; display: grid; place-items: center; background: var(--bg); transition: opacity .4s, visibility .4s; }
 .app:not(.booting) .splash { opacity: 0; visibility: hidden; }
 .splash-logo { display: flex; gap: 6px; }
 .splash-logo span { width: 14px; height: 36px; border-radius: 5px; background: #8fb8ff; animation: bars 1s var(--ease) infinite; }
@@ -571,7 +574,7 @@ kbd { display: inline-block; min-width: 20px; padding: 1px 6px; font-family: var
 @keyframes bump { 0% { transform: scale(1); } 40% { transform: scale(1.18); } 100% { transform: scale(1); } }
 @keyframes blockIn { from { transform: scaleY(.4); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes blockOut { to { transform: scale(.7); opacity: 0; } }
-@keyframes flash { 0% { outline: 0 solid transparent; } 25% { outline: 6px solid color-mix(in oklab, var(--accent) 45%, transparent); } 100% { outline: 14px solid transparent; } }
+@keyframes flash { 0% { outline: 0 solid transparent; } 25% { outline: 6px solid rgba(91, 91, 214, .45); } 100% { outline: 14px solid transparent; } }
 @keyframes fadeIn { from { opacity: 0; } }
 @keyframes fadeUp { from { opacity: 0; transform: translate(-50%, 6px); } }
 .empty-state.show { animation-name: fadeUpCenter; }

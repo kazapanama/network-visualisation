@@ -26,10 +26,13 @@
 python editor.py                # відкриє останній файл
 python editor.py data.py        # відкрити конкретний файл
 python editor.py data.py --export map.pdf [--bw]   # експорт без вікна
-python editor.py --dev          # інтерфейс у звичайному браузері (для розробки; без діалогів файлів)
+python editor.py --browser      # відкрити в Chrome/Edge замість WebView2
+python editor.py --dev          # інтерфейс у звичайному браузері (для розробки)
 ```
 
-Інтерфейс — HTML/JS у папці `ui/`, показується у вікні через [pywebview](https://pywebview.flowrl.com/) (WebView2, вбудований у Windows 10/11). Python відповідає за файли, діалоги та рендер для друку.
+Інтерфейс — HTML/JS у папці `ui/`, показується у вікні через [pywebview](https://pywebview.flowrl.com/) (Microsoft Edge WebView2). Python відповідає за файли, діалоги та рендер для друку.
+
+**Windows 10.** WebView2 є у Windows 11, але на багатьох Windows 10 (особливо без інтернету) його немає. Тоді редактор сам відкривається у вікні Google Chrome або Microsoft Edge в режимі застосунку (без вкладок і адресного рядка) — усе працює так само, діалоги файлів залишаються віндовськими; закриття вікна завершує редактор. Потрібен Chrome/Edge версії 80 або новіший. Якщо немає ні WebView2, ні браузера, редактор покаже повідомлення з посиланням на WebView2 Runtime (для машин без інтернету є «Evergreen Standalone Installer»). Примусово відкрити в браузері: `SubnetEditor.exe --browser`.
 
 ### Збірка exe
 
